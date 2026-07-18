@@ -65,6 +65,13 @@ CFStringRef MRMediaRemoteSetElapsedTime = CFSTR("MRMediaRemoteSetElapsedTime");
 CFStringRef MRMediaRemoteSetShuffleMode = CFSTR("MRMediaRemoteSetShuffleMode");
 CFStringRef MRMediaRemoteSetRepeatMode = CFSTR("MRMediaRemoteSetRepeatMode");
 
+CFStringRef MRMediaRemoteGetNowPlayingClients = CFSTR("MRMediaRemoteGetNowPlayingClients");
+CFStringRef MRNowPlayingClientGetBundleIdentifier = CFSTR("MRNowPlayingClientGetBundleIdentifier");
+CFStringRef MRNowPlayingClientGetParentAppBundleIdentifier = CFSTR("MRNowPlayingClientGetParentAppBundleIdentifier");
+CFStringRef MRNowPlayingClientGetProcessIdentifier = CFSTR("MRNowPlayingClientGetProcessIdentifier");
+CFStringRef MRNowPlayingClientGetDisplayName = CFSTR("MRNowPlayingClientGetDisplayName");
+CFStringRef MRMediaRemoteSendCommandToClient = CFSTR("MRMediaRemoteSendCommandToClient");
+
 CFStringRef MRMediaRemoteRegisterForNowPlayingNotifications = CFSTR("MRMediaRemoteRegisterForNowPlayingNotifications");
 CFStringRef MRMediaRemoteUnregisterForNowPlayingNotifications = CFSTR("MRMediaRemoteUnregisterForNowPlayingNotifications");
 CFStringRef MRMediaRemoteGetNowPlayingApplicationPID = CFSTR("MRMediaRemoteGetNowPlayingApplicationPID");
@@ -88,6 +95,12 @@ static NSString *MediaRemoteFrameworkBundleURL = @"/System/Library/PrivateFramew
 @synthesize getNowPlayingClient;
 @synthesize getNowPlayingInfo;
 @synthesize getNowPlayingApplicationIsPlaying;
+@synthesize getNowPlayingClients;
+@synthesize nowPlayingClientGetBundleIdentifier;
+@synthesize nowPlayingClientGetParentAppBundleIdentifier;
+@synthesize nowPlayingClientGetProcessIdentifier;
+@synthesize nowPlayingClientGetDisplayName;
+@synthesize sendCommandToClient;
 -(id)init
 {
     if (!(self = [super init])) {
@@ -109,6 +122,12 @@ static NSString *MediaRemoteFrameworkBundleURL = @"/System/Library/PrivateFramew
     getNowPlayingClient = (MRMediaRemoteGetNowPlayingClient_t)CFBundleGetFunctionPointerForName(bundle, MRMediaRemoteGetNowPlayingClient);
     getNowPlayingInfo = (MRMediaRemoteGetNowPlayingInfo_t)CFBundleGetFunctionPointerForName(bundle, MRMediaRemoteGetNowPlayingInfo);
     getNowPlayingApplicationIsPlaying = (MRMediaRemoteGetNowPlayingApplicationIsPlaying_t)CFBundleGetFunctionPointerForName(bundle, MRMediaRemoteGetNowPlayingApplicationIsPlaying);
+    getNowPlayingClients = (MRMediaRemoteGetNowPlayingClients_t)CFBundleGetFunctionPointerForName(bundle, MRMediaRemoteGetNowPlayingClients);
+    nowPlayingClientGetBundleIdentifier = (MRNowPlayingClientGetBundleIdentifier_t)CFBundleGetFunctionPointerForName(bundle, MRNowPlayingClientGetBundleIdentifier);
+    nowPlayingClientGetParentAppBundleIdentifier = (MRNowPlayingClientGetParentAppBundleIdentifier_t)CFBundleGetFunctionPointerForName(bundle, MRNowPlayingClientGetParentAppBundleIdentifier);
+    nowPlayingClientGetProcessIdentifier = (MRNowPlayingClientGetProcessIdentifier_t)CFBundleGetFunctionPointerForName(bundle, MRNowPlayingClientGetProcessIdentifier);
+    nowPlayingClientGetDisplayName = (MRNowPlayingClientGetDisplayName_t)CFBundleGetFunctionPointerForName(bundle, MRNowPlayingClientGetDisplayName);
+    sendCommandToClient = (MRMediaRemoteSendCommandToClient_t)CFBundleGetFunctionPointerForName(bundle, MRMediaRemoteSendCommandToClient);
     return self;
 }
 @end

@@ -93,6 +93,16 @@ typedef enum {
 extern void adapter_send(MRACommand command);
 extern void adapter_send_env();
 
+// Prints every registered now playing client to stdout as a JSON dictionary
+// with a "clients" array containing bundle identifiers, process identifiers,
+// display names and playback state where available.
+extern void adapter_clients();
+
+// Sends the given MediaRemote command to the now playing client whose bundle
+// identifier or parent application bundle identifier matches.
+extern void adapter_sendto(NSString *bundleIdentifier, MRACommand command);
+extern void adapter_sendto_env();
+
 // Seeks the timeline of the nowplaying application to the given position.
 // The position must be given in microseconds.
 extern void adapter_seek(long position);

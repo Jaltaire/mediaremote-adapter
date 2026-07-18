@@ -15,6 +15,7 @@ set(MEDIAREMOTEADAPTER_TEST_CLIENT_NAME "MediaRemoteAdapterTestClient"
     CACHE STRING "The output name of the adapter test client")
 
 set(ADAPTER_SOURCES
+    src/adapter/clients.m
     src/adapter/env.m
     src/adapter/get.m
     src/adapter/globals.m

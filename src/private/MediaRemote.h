@@ -108,6 +108,21 @@ typedef void (*MRMediaRemoteSetElapsedTime_t)(double elapsedTime);
 typedef void (*MRMediaRemoteSetShuffleMode_t)(int mode);
 typedef void (*MRMediaRemoteSetRepeatMode_t)(int mode);
 
+extern CFStringRef MRMediaRemoteGetNowPlayingClients;
+extern CFStringRef MRNowPlayingClientGetBundleIdentifier;
+extern CFStringRef MRNowPlayingClientGetParentAppBundleIdentifier;
+extern CFStringRef MRNowPlayingClientGetProcessIdentifier;
+extern CFStringRef MRNowPlayingClientGetDisplayName;
+extern CFStringRef MRMediaRemoteSendCommandToClient;
+
+typedef void (^MRMediaRemoteGetNowPlayingClientsCompletion_t)(NSArray *clients);
+typedef void (*MRMediaRemoteGetNowPlayingClients_t)(dispatch_queue_t queue, MRMediaRemoteGetNowPlayingClientsCompletion_t completion);
+typedef NSString *(*MRNowPlayingClientGetBundleIdentifier_t)(id client);
+typedef NSString *(*MRNowPlayingClientGetParentAppBundleIdentifier_t)(id client);
+typedef int (*MRNowPlayingClientGetProcessIdentifier_t)(id client);
+typedef NSString *(*MRNowPlayingClientGetDisplayName_t)(id client);
+typedef bool (*MRMediaRemoteSendCommandToClient_t)(MRCommand command, id userInfo, id origin, id client, unsigned long long flags, dispatch_queue_t queue, void (^completion)(id result));
+
 extern CFStringRef MRMediaRemoteRegisterForNowPlayingNotifications;
 extern CFStringRef MRMediaRemoteUnregisterForNowPlayingNotifications;
 extern CFStringRef MRMediaRemoteGetNowPlayingApplicationPID;
@@ -156,6 +171,12 @@ extern NSString *kMRNowPlayingClientUserInfoKey;
 @property(readonly) MRMediaRemoteGetNowPlayingClient_t getNowPlayingClient;
 @property(readonly) MRMediaRemoteGetNowPlayingInfo_t getNowPlayingInfo;
 @property(readonly) MRMediaRemoteGetNowPlayingApplicationIsPlaying_t getNowPlayingApplicationIsPlaying;
+@property(readonly) MRMediaRemoteGetNowPlayingClients_t getNowPlayingClients;
+@property(readonly) MRNowPlayingClientGetBundleIdentifier_t nowPlayingClientGetBundleIdentifier;
+@property(readonly) MRNowPlayingClientGetParentAppBundleIdentifier_t nowPlayingClientGetParentAppBundleIdentifier;
+@property(readonly) MRNowPlayingClientGetProcessIdentifier_t nowPlayingClientGetProcessIdentifier;
+@property(readonly) MRNowPlayingClientGetDisplayName_t nowPlayingClientGetDisplayName;
+@property(readonly) MRMediaRemoteSendCommandToClient_t sendCommandToClient;
 // Constructor
 -(id)init;
 @end

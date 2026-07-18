@@ -26,6 +26,8 @@ FUNCTION:
   stream   Streams now playing information (as diff by default)
   get      Prints now playing information once with all available metadata
   send     Sends a command to the now playing application
+  sendto   Sends a command to a specific now playing client by bundle id
+  clients  Prints all registered now playing clients as JSON
   seek     Seeks to a specific timeline position
   shuffle  Sets the shuffle mode
   repeat   Sets the repeat mode
@@ -116,6 +118,8 @@ fail "Invalid function name: '$function_name'"
   unless $function_name eq "stream"
   || $function_name eq "get"
   || $function_name eq "send"
+  || $function_name eq "sendto"
+  || $function_name eq "clients"
   || $function_name eq "seek"
   || $function_name eq "shuffle"
   || $function_name eq "repeat"
@@ -181,7 +185,27 @@ sub set_env_option_value {
 }
 
 my $symbol_name = "adapter_$function_name";
-if ($function_name eq "send") {
+if ($function_name eq "sendto") {
+  my $bundle = shift @ARGV;
+  fail "Missing bundle identifier for '$function_name' command" unless defined $bundle;
+  my $id = shift @ARGV;
+  fail "Missing ID for '$function_name' command" unless defined $id;
+  set_env_param($symbol_name, 0, "bundle", "$bundle");
+  set_env_param($symbol_name, 1, "command", "$id");
+  $symbol_name = env_func($symbol_name);
+}
+elsif ($function_name eq "clients") {
+  my $options = parse_options(0);
+  foreach my $key (keys %{$options}) {
+    if ($key eq "debug") {
+      set_env_option($options, $key);
+    }
+    else {
+      fail "Unknown option for 'clients': $key";
+    }
+  }
+}
+elsif ($function_name eq "send") {
   my $id = shift @ARGV;
   fail "Missing ID for '$function_name' command" unless defined $id;
   set_env_param($symbol_name, 0, "command", "$id");
