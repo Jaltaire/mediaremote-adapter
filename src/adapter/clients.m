@@ -81,12 +81,35 @@ static NSArray *copyNowPlayingClients() {
     return result;
 }
 
+
+static id localOrigin();
+
+static NSArray *copyActivePlayerPaths(id origin);
+
 void adapter_clients() {
     bool debug = getEnvOption(@"debug") != nil;
     NSArray *clients = copyNowPlayingClients();
+    NSArray *paths = copyActivePlayerPaths(localOrigin());
     NSMutableArray *entries = [NSMutableArray array];
     for (id client in clients) {
-        [entries addObject:clientEntry(client, debug)];
+        NSMutableDictionary *entry = clientEntry(client, debug);
+        for (id path in paths) {
+            id pathClient = g_mediaRemote.nowPlayingPlayerPathGetClient
+                                ? g_mediaRemote.nowPlayingPlayerPathGetClient(path)
+                                : nil;
+            NSString *pathBundle =
+                (pathClient && g_mediaRemote.nowPlayingClientGetBundleIdentifier)
+                    ? g_mediaRemote.nowPlayingClientGetBundleIdentifier(pathClient)
+                    : nil;
+            if ([pathBundle isEqualToString:entry[kMRABundleIdentifier]]) {
+                entry[@"controllable"] = @YES;
+                break;
+            }
+        }
+        if (entry[@"controllable"] == nil) {
+            entry[@"controllable"] = @NO;
+        }
+        [entries addObject:entry];
     }
     NSString *json =
         serializeJsonDictionarySafe(@{@"clients" : entries}, debug);
@@ -102,42 +125,70 @@ static id localOrigin() {
     return [originClass performSelector:@selector(localOrigin)];
 }
 
+static NSArray *copyActivePlayerPaths(id origin) {
+    if (!g_mediaRemote.getActivePlayerPathsForOrigin) {
+        return nil;
+    }
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    __block NSArray *result = nil;
+    g_mediaRemote.getActivePlayerPathsForOrigin(
+        origin, g_serialdispatchQueue, ^(NSArray *paths) {
+          result = paths;
+          dispatch_semaphore_signal(semaphore);
+        });
+    dispatch_semaphore_wait(
+        semaphore, dispatch_time(DISPATCH_TIME_NOW,
+                                 CLIENTS_TIMEOUT_MILLIS * NSEC_PER_MSEC));
+    return result;
+}
+
+static bool clientMatchesBundle(id client, NSString *bundleIdentifier) {
+    if (client == nil) {
+        return false;
+    }
+    NSString *clientBundle =
+        g_mediaRemote.nowPlayingClientGetBundleIdentifier
+            ? g_mediaRemote.nowPlayingClientGetBundleIdentifier(client)
+            : nil;
+    NSString *parentBundle =
+        g_mediaRemote.nowPlayingClientGetParentAppBundleIdentifier
+            ? g_mediaRemote.nowPlayingClientGetParentAppBundleIdentifier(client)
+            : nil;
+    return [bundleIdentifier isEqualToString:clientBundle] ||
+           [bundleIdentifier isEqualToString:parentBundle];
+}
+
 void adapter_sendto(NSString *bundleIdentifier, MRACommand command) {
     if (command < kMRAPlay || command > kMRASkipFifteenSeconds) {
         failf(@"Invalid command: %d", (int)command);
-    }
-    if (!g_mediaRemote.sendCommandToClient) {
-        fail(@"MRMediaRemoteSendCommandToClient is unavailable");
-    }
-    NSArray *clients = copyNowPlayingClients();
-    id target = nil;
-    for (id client in clients) {
-        NSString *clientBundle =
-            g_mediaRemote.nowPlayingClientGetBundleIdentifier
-                ? g_mediaRemote.nowPlayingClientGetBundleIdentifier(client)
-                : nil;
-        NSString *parentBundle =
-            g_mediaRemote.nowPlayingClientGetParentAppBundleIdentifier
-                ? g_mediaRemote.nowPlayingClientGetParentAppBundleIdentifier(
-                      client)
-                : nil;
-        if ([bundleIdentifier isEqualToString:clientBundle] ||
-            [bundleIdentifier isEqualToString:parentBundle]) {
-            target = client;
-            break;
-        }
-    }
-    if (target == nil) {
-        failf(@"No now playing client matches bundle identifier: %@",
-              bundleIdentifier);
     }
     id origin = localOrigin();
     if (origin == nil) {
         fail(@"The local MediaRemote origin is unavailable");
     }
-    bool result = g_mediaRemote.sendCommandToClient(
-        (MRCommand)command, nil, origin, target, 0, g_serialdispatchQueue,
-        NULL);
+
+    // Route the command through the target application's active player path.
+    // Only the elected now playing player exposes an active path; addressing a
+    // background client instead makes MediaRemote redirect the command to the
+    // elected player, which controls the wrong application.
+    id targetPath = nil;
+    NSArray *paths = copyActivePlayerPaths(origin);
+    for (id path in paths) {
+        id client = g_mediaRemote.nowPlayingPlayerPathGetClient
+                        ? g_mediaRemote.nowPlayingPlayerPathGetClient(path)
+                        : nil;
+        if (clientMatchesBundle(client, bundleIdentifier)) {
+            targetPath = path;
+            break;
+        }
+    }
+    if (targetPath == nil || !g_mediaRemote.sendCommandToPlayer) {
+        failf(@"The application `%@` is not the active now playing player and "
+              @"cannot be controlled remotely.",
+              bundleIdentifier);
+    }
+    bool result = g_mediaRemote.sendCommandToPlayer(
+        (MRCommand)command, nil, targetPath, 0, g_serialdispatchQueue, NULL);
     if (!result) {
         failf(@"Failed to send command %d to %@", (int)command,
               bundleIdentifier);

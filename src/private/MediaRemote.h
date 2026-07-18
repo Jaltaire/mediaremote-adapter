@@ -114,6 +114,10 @@ extern CFStringRef MRNowPlayingClientGetParentAppBundleIdentifier;
 extern CFStringRef MRNowPlayingClientGetProcessIdentifier;
 extern CFStringRef MRNowPlayingClientGetDisplayName;
 extern CFStringRef MRMediaRemoteSendCommandToClient;
+extern CFStringRef MRMediaRemoteSendCommandToApp;
+extern CFStringRef MRMediaRemoteSendCommandToPlayer;
+extern CFStringRef MRMediaRemoteGetActivePlayerPathsForOrigin;
+extern CFStringRef MRNowPlayingPlayerPathGetClient;
 
 typedef void (^MRMediaRemoteGetNowPlayingClientsCompletion_t)(NSArray *clients);
 typedef void (*MRMediaRemoteGetNowPlayingClients_t)(dispatch_queue_t queue, MRMediaRemoteGetNowPlayingClientsCompletion_t completion);
@@ -122,6 +126,10 @@ typedef NSString *(*MRNowPlayingClientGetParentAppBundleIdentifier_t)(id client)
 typedef int (*MRNowPlayingClientGetProcessIdentifier_t)(id client);
 typedef NSString *(*MRNowPlayingClientGetDisplayName_t)(id client);
 typedef bool (*MRMediaRemoteSendCommandToClient_t)(MRCommand command, id userInfo, id origin, id client, unsigned long long flags, dispatch_queue_t queue, void (^completion)(id result));
+typedef bool (*MRMediaRemoteSendCommandToApp_t)(MRCommand command, id userInfo, id origin, NSString *bundleIdentifier, unsigned long long flags, dispatch_queue_t queue, void (^completion)(id result));
+typedef bool (*MRMediaRemoteSendCommandToPlayer_t)(MRCommand command, id userInfo, id playerPath, unsigned long long flags, dispatch_queue_t queue, void (^completion)(id result));
+typedef void (*MRMediaRemoteGetActivePlayerPathsForOrigin_t)(id origin, dispatch_queue_t queue, void (^completion)(NSArray *playerPaths));
+typedef id (*MRNowPlayingPlayerPathGetClient_t)(id playerPath);
 
 extern CFStringRef MRMediaRemoteRegisterForNowPlayingNotifications;
 extern CFStringRef MRMediaRemoteUnregisterForNowPlayingNotifications;
@@ -177,6 +185,10 @@ extern NSString *kMRNowPlayingClientUserInfoKey;
 @property(readonly) MRNowPlayingClientGetProcessIdentifier_t nowPlayingClientGetProcessIdentifier;
 @property(readonly) MRNowPlayingClientGetDisplayName_t nowPlayingClientGetDisplayName;
 @property(readonly) MRMediaRemoteSendCommandToClient_t sendCommandToClient;
+@property(readonly) MRMediaRemoteSendCommandToApp_t sendCommandToApp;
+@property(readonly) MRMediaRemoteSendCommandToPlayer_t sendCommandToPlayer;
+@property(readonly) MRMediaRemoteGetActivePlayerPathsForOrigin_t getActivePlayerPathsForOrigin;
+@property(readonly) MRNowPlayingPlayerPathGetClient_t nowPlayingPlayerPathGetClient;
 // Constructor
 -(id)init;
 @end
