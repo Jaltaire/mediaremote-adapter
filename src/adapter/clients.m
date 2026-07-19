@@ -5,6 +5,7 @@
 
 #import <Foundation/Foundation.h>
 #import <dispatch/dispatch.h>
+#include <unistd.h>
 
 #import "MediaRemoteAdapter.h"
 #import "adapter/env.h"
@@ -84,31 +85,21 @@ static NSArray *copyNowPlayingClients() {
 
 static id localOrigin();
 
-static NSArray *copyActivePlayerPaths(id origin);
+static id copyFirstPlayerForClient(id origin, id client);
 
 void adapter_clients() {
     bool debug = getEnvOption(@"debug") != nil;
+    id origin = localOrigin();
     NSArray *clients = copyNowPlayingClients();
-    NSArray *paths = copyActivePlayerPaths(localOrigin());
     NSMutableArray *entries = [NSMutableArray array];
     for (id client in clients) {
         NSMutableDictionary *entry = clientEntry(client, debug);
-        for (id path in paths) {
-            id pathClient = g_mediaRemote.nowPlayingPlayerPathGetClient
-                                ? g_mediaRemote.nowPlayingPlayerPathGetClient(path)
-                                : nil;
-            NSString *pathBundle =
-                (pathClient && g_mediaRemote.nowPlayingClientGetBundleIdentifier)
-                    ? g_mediaRemote.nowPlayingClientGetBundleIdentifier(pathClient)
-                    : nil;
-            if ([pathBundle isEqualToString:entry[kMRABundleIdentifier]]) {
-                entry[@"controllable"] = @YES;
-                break;
-            }
-        }
-        if (entry[@"controllable"] == nil) {
-            entry[@"controllable"] = @NO;
-        }
+        // A session is controllable when it exposes a concrete player, which
+        // means a fully specified player path can be built to address it
+        // directly rather than the command falling through to the elected
+        // player.
+        id player = copyFirstPlayerForClient(origin, client);
+        entry[@"controllable"] = player != nil ? @YES : @NO;
         [entries addObject:entry];
     }
     NSString *json =
@@ -158,33 +149,134 @@ static bool clientMatchesBundle(id client, NSString *bundleIdentifier) {
            [bundleIdentifier isEqualToString:parentBundle];
 }
 
-void adapter_sendto(NSString *bundleIdentifier, MRACommand command) {
-    if (command < kMRAPlay || command > kMRASkipFifteenSeconds) {
-        failf(@"Invalid command: %d", (int)command);
+static id copyFirstPlayerForClient(id origin, id client) {
+    if (!g_mediaRemote.getPlayersForClient) {
+        return nil;
     }
-    id origin = localOrigin();
-    if (origin == nil) {
-        fail(@"The local MediaRemote origin is unavailable");
-    }
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    __block id firstPlayer = nil;
+    g_mediaRemote.getPlayersForClient(
+        client, origin, g_serialdispatchQueue, ^(NSArray *players) {
+          if (players.count > 0) {
+              firstPlayer = players[0];
+          }
+          dispatch_semaphore_signal(semaphore);
+        });
+    dispatch_semaphore_wait(
+        semaphore, dispatch_time(DISPATCH_TIME_NOW,
+                                 CLIENTS_TIMEOUT_MILLIS * NSEC_PER_MSEC));
+    return firstPlayer;
+}
 
-    // Route the command through the target application's active player path.
-    // Only the elected now playing player exposes an active path; addressing a
-    // background client instead makes MediaRemote redirect the command to the
-    // elected player, which controls the wrong application.
-    id targetPath = nil;
+static id playerPathForClient(id origin, id client, id player) {
+    Class playerPathClass = NSClassFromString(@"MRPlayerPath");
+    if (playerPathClass == nil) {
+        return nil;
+    }
+    SEL initSel = NSSelectorFromString(@"initWithOrigin:client:player:");
+    id path = [playerPathClass alloc];
+    if (![path respondsToSelector:initSel]) {
+        return nil;
+    }
+    id (*initImp)(id, SEL, id, id, id) =
+        (id (*)(id, SEL, id, id, id))[path methodForSelector:initSel];
+    return initImp(path, initSel, origin, client, player);
+}
+
+static id activePathForBundle(id origin, NSString *bundleIdentifier) {
     NSArray *paths = copyActivePlayerPaths(origin);
     for (id path in paths) {
         id client = g_mediaRemote.nowPlayingPlayerPathGetClient
                         ? g_mediaRemote.nowPlayingPlayerPathGetClient(path)
                         : nil;
         if (clientMatchesBundle(client, bundleIdentifier)) {
-            targetPath = path;
-            break;
+            return path;
         }
     }
-    if (targetPath == nil || !g_mediaRemote.sendCommandToPlayer) {
-        failf(@"The application `%@` is not the active now playing player and "
-              @"cannot be controlled remotely.",
+    return nil;
+}
+
+static int nowPlayingPid() {
+    if (!g_mediaRemote.getNowPlayingApplicationPID) {
+        return 0;
+    }
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    __block int pid = 0;
+    g_mediaRemote.getNowPlayingApplicationPID(
+        g_serialdispatchQueue, ^(int value) {
+          pid = value;
+          dispatch_semaphore_signal(semaphore);
+        });
+    dispatch_semaphore_wait(
+        semaphore,
+        dispatch_time(DISPATCH_TIME_NOW, CLIENTS_TIMEOUT_MILLIS * NSEC_PER_MSEC));
+    return pid;
+}
+
+void adapter_sendto(NSString *bundleIdentifier, MRACommand command) {
+    if (command < kMRAPlay || command > kMRASkipFifteenSeconds) {
+        failf(@"Invalid command: %d", (int)command);
+    }
+    if (!g_mediaRemote.sendCommandToPlayer) {
+        fail(@"MRMediaRemoteSendCommandToPlayer is unavailable");
+    }
+    id origin = localOrigin();
+    if (origin == nil) {
+        fail(@"The local MediaRemote origin is unavailable");
+    }
+
+    // Commands must be sent to an active player path, otherwise MediaRemote
+    // redirects them to the elected now playing player and controls the wrong
+    // application. When the target already exposes an active path, send there.
+    id targetPath = activePathForBundle(origin, bundleIdentifier);
+
+    // Otherwise elect the target's player, confirm it actually became the now
+    // playing application, and send to that player path. Some applications
+    // decline election; sending anyway would control whichever player is
+    // currently elected, so give up safely instead of controlling the wrong
+    // application.
+    if (targetPath == nil && g_mediaRemote.setNowPlayingPlayerIfPossible) {
+        id electionPath = nil;
+        int targetPid = 0;
+        NSArray *clients = copyNowPlayingClients();
+        for (id client in clients) {
+            if (clientMatchesBundle(client, bundleIdentifier)) {
+                id player = copyFirstPlayerForClient(origin, client);
+                if (player != nil) {
+                    electionPath = playerPathForClient(origin, client, player);
+                    if (g_mediaRemote.nowPlayingClientGetProcessIdentifier) {
+                        targetPid =
+                            g_mediaRemote.nowPlayingClientGetProcessIdentifier(
+                                client);
+                    }
+                }
+                break;
+            }
+        }
+        if (electionPath != nil) {
+            dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+            g_mediaRemote.setNowPlayingPlayerIfPossible(
+                electionPath, g_serialdispatchQueue, ^(id error) {
+                  dispatch_semaphore_signal(semaphore);
+                });
+            dispatch_semaphore_wait(
+                semaphore,
+                dispatch_time(DISPATCH_TIME_NOW, 2000 * NSEC_PER_MSEC));
+            // Only send once the target application has genuinely become the
+            // now playing application. Applications that decline election never
+            // do, so the command is abandoned instead of controlling whichever
+            // player is currently elected.
+            for (int attempt = 0; attempt < 8 && targetPid != 0; attempt++) {
+                if (nowPlayingPid() == targetPid) {
+                    targetPath = electionPath;
+                    break;
+                }
+                usleep(150 * 1000);
+            }
+        }
+    }
+    if (targetPath == nil) {
+        failf(@"The application `%@` did not accept remote control.",
               bundleIdentifier);
     }
     bool result = g_mediaRemote.sendCommandToPlayer(

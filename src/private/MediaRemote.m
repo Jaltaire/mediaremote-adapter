@@ -75,6 +75,8 @@ CFStringRef MRMediaRemoteSendCommandToApp = CFSTR("MRMediaRemoteSendCommandToApp
 CFStringRef MRMediaRemoteSendCommandToPlayer = CFSTR("MRMediaRemoteSendCommandToPlayer");
 CFStringRef MRMediaRemoteGetActivePlayerPathsForOrigin = CFSTR("MRMediaRemoteGetActivePlayerPathsForOrigin");
 CFStringRef MRNowPlayingPlayerPathGetClient = CFSTR("MRNowPlayingPlayerPathGetClient");
+CFStringRef MRMediaRemoteGetPlayersForClient = CFSTR("MRMediaRemoteGetPlayersForClient");
+CFStringRef MRMediaRemoteSetNowPlayingPlayerIfPossible = CFSTR("MRMediaRemoteSetNowPlayingPlayerIfPossible");
 
 CFStringRef MRMediaRemoteRegisterForNowPlayingNotifications = CFSTR("MRMediaRemoteRegisterForNowPlayingNotifications");
 CFStringRef MRMediaRemoteUnregisterForNowPlayingNotifications = CFSTR("MRMediaRemoteUnregisterForNowPlayingNotifications");
@@ -109,6 +111,8 @@ static NSString *MediaRemoteFrameworkBundleURL = @"/System/Library/PrivateFramew
 @synthesize sendCommandToPlayer;
 @synthesize getActivePlayerPathsForOrigin;
 @synthesize nowPlayingPlayerPathGetClient;
+@synthesize getPlayersForClient;
+@synthesize setNowPlayingPlayerIfPossible;
 -(id)init
 {
     if (!(self = [super init])) {
@@ -140,6 +144,8 @@ static NSString *MediaRemoteFrameworkBundleURL = @"/System/Library/PrivateFramew
     sendCommandToPlayer = (MRMediaRemoteSendCommandToPlayer_t)CFBundleGetFunctionPointerForName(bundle, MRMediaRemoteSendCommandToPlayer);
     getActivePlayerPathsForOrigin = (MRMediaRemoteGetActivePlayerPathsForOrigin_t)CFBundleGetFunctionPointerForName(bundle, MRMediaRemoteGetActivePlayerPathsForOrigin);
     nowPlayingPlayerPathGetClient = (MRNowPlayingPlayerPathGetClient_t)CFBundleGetFunctionPointerForName(bundle, MRNowPlayingPlayerPathGetClient);
+    getPlayersForClient = (MRMediaRemoteGetPlayersForClient_t)CFBundleGetFunctionPointerForName(bundle, MRMediaRemoteGetPlayersForClient);
+    setNowPlayingPlayerIfPossible = (MRMediaRemoteSetNowPlayingPlayerIfPossible_t)CFBundleGetFunctionPointerForName(bundle, MRMediaRemoteSetNowPlayingPlayerIfPossible);
     return self;
 }
 @end
