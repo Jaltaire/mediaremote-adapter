@@ -76,9 +76,13 @@ static NSArray *copyNowPlayingClients() {
           result = clients;
           dispatch_semaphore_signal(semaphore);
         });
-    dispatch_semaphore_wait(
+    long waitStatus = dispatch_semaphore_wait(
         semaphore, dispatch_time(DISPATCH_TIME_NOW,
                                  CLIENTS_TIMEOUT_MILLIS * NSEC_PER_MSEC));
+    if (waitStatus != 0) {
+        fail(@"The MediaRemote client list request timed out.");
+        return nil;
+    }
     return result;
 }
 
@@ -87,6 +91,45 @@ static id localOrigin();
 
 static id copyFirstPlayerForClient(id origin, id client);
 
+static id playerPathForClient(id origin, id client, id player);
+
+static NSDictionary *copyNowPlayingInfoForClient(id origin, id client) {
+    if (!g_mediaRemote.getNowPlayingInfoForClient) {
+        return nil;
+    }
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    __block NSDictionary *result = nil;
+    g_mediaRemote.getNowPlayingInfoForClient(
+        client, origin, NO, g_serialdispatchQueue,
+        ^(NSDictionary *information, id error) {
+          result = information;
+          dispatch_semaphore_signal(semaphore);
+        });
+    long waitStatus = dispatch_semaphore_wait(
+        semaphore, dispatch_time(DISPATCH_TIME_NOW,
+                                 CLIENTS_TIMEOUT_MILLIS * NSEC_PER_MSEC));
+    return waitStatus == 0 ? result : nil;
+}
+
+static NSNumber *copyPlaybackStateForPlayer(id playerPath) {
+    if (playerPath == nil || !g_mediaRemote.getPlaybackStateForPlayer) {
+        return nil;
+    }
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    __block NSNumber *result = nil;
+    g_mediaRemote.getPlaybackStateForPlayer(
+        playerPath, g_serialdispatchQueue,
+        ^(unsigned int playbackState, NSError *error) {
+          (void)error;
+          result = @(playbackState);
+          dispatch_semaphore_signal(semaphore);
+        });
+    long waitStatus = dispatch_semaphore_wait(
+        semaphore, dispatch_time(DISPATCH_TIME_NOW,
+                                 CLIENTS_TIMEOUT_MILLIS * NSEC_PER_MSEC));
+    return waitStatus == 0 ? result : nil;
+}
+
 void adapter_clients() {
     bool debug = getEnvOption(@"debug") != nil;
     id origin = localOrigin();
@@ -94,11 +137,41 @@ void adapter_clients() {
     NSMutableArray *entries = [NSMutableArray array];
     for (id client in clients) {
         NSMutableDictionary *entry = clientEntry(client, debug);
+        NSDictionary *information = copyNowPlayingInfoForClient(origin, client);
+        NSString *title = information[kMRMediaRemoteNowPlayingInfoTitle];
+        NSString *artist = information[kMRMediaRemoteNowPlayingInfoArtist];
+        NSString *album = information[kMRMediaRemoteNowPlayingInfoAlbum];
+        NSNumber *playbackRate =
+            information[kMRMediaRemoteNowPlayingInfoPlaybackRate];
+        if (title != nil) {
+            entry[@"title"] = title;
+        }
+        if (artist != nil) {
+            entry[@"artist"] = artist;
+        }
+        if (album != nil) {
+            entry[@"album"] = album;
+        }
+        if ([playbackRate isKindOfClass:[NSNumber class]]) {
+            entry[kMRAPlaying] =
+                [playbackRate doubleValue] != 0.0 ? @YES : @NO;
+        }
         // A session is controllable when it exposes a concrete player, which
         // means a fully specified player path can be built to address it
         // directly rather than the command falling through to the elected
         // player.
         id player = copyFirstPlayerForClient(origin, client);
+        id playerPath = playerPathForClient(origin, client, player);
+        NSNumber *playbackState = copyPlaybackStateForPlayer(playerPath);
+        if (playbackState != nil) {
+            entry[kMRAPlaybackState] = playbackState;
+            if (g_mediaRemote.playbackStateIsAdvancing) {
+                entry[kMRAPlaying] = g_mediaRemote.playbackStateIsAdvancing(
+                                         [playbackState unsignedIntValue])
+                                         ? @YES
+                                         : @NO;
+            }
+        }
         entry[@"controllable"] = player != nil ? @YES : @NO;
         [entries addObject:entry];
     }
@@ -127,10 +200,10 @@ static NSArray *copyActivePlayerPaths(id origin) {
           result = paths;
           dispatch_semaphore_signal(semaphore);
         });
-    dispatch_semaphore_wait(
+    long waitStatus = dispatch_semaphore_wait(
         semaphore, dispatch_time(DISPATCH_TIME_NOW,
                                  CLIENTS_TIMEOUT_MILLIS * NSEC_PER_MSEC));
-    return result;
+    return waitStatus == 0 ? result : nil;
 }
 
 static bool clientMatchesBundle(id client, NSString *bundleIdentifier) {
@@ -162,10 +235,10 @@ static id copyFirstPlayerForClient(id origin, id client) {
           }
           dispatch_semaphore_signal(semaphore);
         });
-    dispatch_semaphore_wait(
+    long waitStatus = dispatch_semaphore_wait(
         semaphore, dispatch_time(DISPATCH_TIME_NOW,
                                  CLIENTS_TIMEOUT_MILLIS * NSEC_PER_MSEC));
-    return firstPlayer;
+    return waitStatus == 0 ? firstPlayer : nil;
 }
 
 static id playerPathForClient(id origin, id client, id player) {
@@ -207,10 +280,10 @@ static int nowPlayingPid() {
           pid = value;
           dispatch_semaphore_signal(semaphore);
         });
-    dispatch_semaphore_wait(
+    long waitStatus = dispatch_semaphore_wait(
         semaphore,
         dispatch_time(DISPATCH_TIME_NOW, CLIENTS_TIMEOUT_MILLIS * NSEC_PER_MSEC));
-    return pid;
+    return waitStatus == 0 ? pid : 0;
 }
 
 void adapter_sendto(NSString *bundleIdentifier, MRACommand command) {

@@ -19,6 +19,7 @@
 #endif
 
 static CFRunLoopRef g_runLoop = NULL;
+static dispatch_source_t g_parentExitSource = NULL;
 
 static NSString *serializeData(NSDictionary *data, BOOL diff, BOOL pretty) {
     return serializeJsonDictionarySafe(
@@ -145,6 +146,20 @@ static MetadataStats compareIdentifyingTrackKeys(NSDictionary *prev,
 }
 
 extern void adapter_stream() {
+
+    pid_t parentProcessIdentifier = getppid();
+    if (parentProcessIdentifier <= 1) {
+        return;
+    }
+    g_parentExitSource = dispatch_source_create(
+        DISPATCH_SOURCE_TYPE_PROC, (uintptr_t)parentProcessIdentifier,
+        DISPATCH_PROC_EXIT, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+    if (g_parentExitSource != NULL) {
+        dispatch_source_set_event_handler(g_parentExitSource, ^{
+          CFRunLoopStop(g_runLoop);
+        });
+        dispatch_activate(g_parentExitSource);
+    }
 
     // Get ADAPTER_TEST_MODE as a boolean and set BOOL isTestMode
     BOOL isTestMode = NO;
@@ -491,6 +506,10 @@ extern void adapter_stream() {
     [default_center removeObserver:info_change_observer];
     [shared_workscape_notification_center
         removeObserver:app_termination_observer];
+    if (g_parentExitSource != NULL) {
+        dispatch_source_cancel(g_parentExitSource);
+        g_parentExitSource = NULL;
+    }
 }
 
 extern void adapter_stream_env() { adapter_stream(); }
