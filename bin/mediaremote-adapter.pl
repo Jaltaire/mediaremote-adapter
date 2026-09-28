@@ -9,6 +9,8 @@ use warnings;
 use DynaLoader;
 use File::Spec;
 use File::Basename;
+use JSON::PP;
+use IO::Handle;
 
 sub print_help() {
   print <<'HELP';
@@ -28,6 +30,7 @@ FUNCTION:
   send     Sends a command to the now playing application
   sendto   Sends a command to a specific now playing client by bundle id
   clients  Prints all registered now playing clients as JSON
+  broker   Runs a persistent command broker over standard input and output
   seek     Seeks to a specific timeline position
   shuffle  Sets the shuffle mode
   repeat   Sets the repeat mode
@@ -120,6 +123,7 @@ fail "Invalid function name: '$function_name'"
   || $function_name eq "send"
   || $function_name eq "sendto"
   || $function_name eq "clients"
+  || $function_name eq "broker"
   || $function_name eq "seek"
   || $function_name eq "shuffle"
   || $function_name eq "repeat"
@@ -182,6 +186,95 @@ sub set_env_option_value {
     fail "Missing value for option '$key'";
   }
   set_env_option_unsafe($key, $value);
+}
+
+sub install_symbol {
+  my ($perl_name, $native_name) = @_;
+  my $symbol = DynaLoader::dl_find_symbol($handle, $native_name)
+    or fail "Symbol '$native_name' not found in $framework";
+  DynaLoader::dl_install_xsub("main::$perl_name", $symbol);
+}
+
+sub clear_adapter_environment {
+  for my $key (keys %ENV) {
+    delete $ENV{$key}
+      if $key =~ /^MEDIAREMOTEADAPTER_(?:PARAM|OPTION)_/;
+  }
+}
+
+sub broker_response {
+  my ($request_id, $phase, $ok, $error) = @_;
+  my %response = (
+    adapterBroker => 1,
+    requestId => $request_id,
+    phase => $phase,
+    ok => $ok ? JSON::PP::true : JSON::PP::false,
+  );
+  $response{error} = $error if defined $error;
+  print encode_json(\%response), "\n";
+  STDOUT->flush();
+}
+
+sub run_broker {
+  install_symbol("broker_clients", "adapter_clients");
+  install_symbol("broker_get", "adapter_get_env");
+  install_symbol("broker_send", "adapter_send_env");
+  install_symbol("broker_sendto", "adapter_sendto_env");
+  $| = 1;
+  while (my $line = <STDIN>) {
+    my $request;
+    eval { $request = decode_json($line); };
+    if ($@ || ref($request) ne "HASH") {
+      broker_response(0, "end", 0, "The broker request is not valid JSON.");
+      next;
+    }
+    my $request_id = $request->{requestId};
+    my $operation = $request->{operation};
+    if (!defined $request_id || !defined $operation) {
+      broker_response(0, "end", 0, "The broker request is missing required fields.");
+      next;
+    }
+    clear_adapter_environment();
+    broker_response($request_id, "begin", 1, undef);
+    if ($operation eq "clients") {
+      broker_clients();
+    }
+    elsif ($operation eq "get") {
+      $ENV{MEDIAREMOTEADAPTER_OPTION_no_artwork} = "";
+      broker_get();
+    }
+    elsif ($operation eq "send") {
+      my $command = $request->{command};
+      if (!defined $command) {
+        broker_response($request_id, "end", 0, "The send request is missing a command.");
+        next;
+      }
+      $ENV{MEDIAREMOTEADAPTER_PARAM_adapter_send_0_command} = "$command";
+      broker_send();
+    }
+    elsif ($operation eq "sendto") {
+      my $bundle = $request->{bundle};
+      my $command = $request->{command};
+      if (!defined $bundle || !defined $command) {
+        broker_response($request_id, "end", 0, "The sendto request is missing a bundle or command.");
+        next;
+      }
+      $ENV{MEDIAREMOTEADAPTER_PARAM_adapter_sendto_0_bundle} = "$bundle";
+      $ENV{MEDIAREMOTEADAPTER_PARAM_adapter_sendto_1_command} = "$command";
+      broker_sendto();
+    }
+    else {
+      broker_response($request_id, "end", 0, "The broker operation is not supported.");
+      next;
+    }
+    STDOUT->flush();
+    broker_response($request_id, "end", 1, undef);
+  }
+  exit 0;
+}
+
+if ($function_name eq "broker") {
+  run_broker();
 }
 
 my $symbol_name = "adapter_$function_name";
