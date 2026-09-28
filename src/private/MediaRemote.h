@@ -123,6 +123,7 @@ extern CFStringRef MRMediaRemoteGetActivePlayerPathsForOrigin;
 extern CFStringRef MRNowPlayingPlayerPathGetClient;
 extern CFStringRef MRMediaRemoteGetPlayersForClient;
 extern CFStringRef MRMediaRemoteSetNowPlayingPlayerIfPossible;
+extern CFStringRef MRMediaRemoteSetOverriddenNowPlayingApplication;
 
 typedef void (^MRMediaRemoteGetNowPlayingClientsCompletion_t)(NSArray *clients);
 typedef void (*MRMediaRemoteGetNowPlayingClients_t)(dispatch_queue_t queue, MRMediaRemoteGetNowPlayingClientsCompletion_t completion);
@@ -140,6 +141,7 @@ typedef void (*MRMediaRemoteGetActivePlayerPathsForOrigin_t)(id origin, dispatch
 typedef id (*MRNowPlayingPlayerPathGetClient_t)(id playerPath);
 typedef void (*MRMediaRemoteGetPlayersForClient_t)(id client, id origin, dispatch_queue_t queue, void (^completion)(NSArray *players));
 typedef void (*MRMediaRemoteSetNowPlayingPlayerIfPossible_t)(id playerPath, dispatch_queue_t queue, void (^completion)(id error));
+typedef void (*MRMediaRemoteSetOverriddenNowPlayingApplication_t)(NSString *bundleIdentifier);
 
 extern CFStringRef MRMediaRemoteRegisterForNowPlayingNotifications;
 extern CFStringRef MRMediaRemoteUnregisterForNowPlayingNotifications;
@@ -204,6 +206,7 @@ extern NSString *kMRNowPlayingClientUserInfoKey;
 @property(readonly) MRNowPlayingPlayerPathGetClient_t nowPlayingPlayerPathGetClient;
 @property(readonly) MRMediaRemoteGetPlayersForClient_t getPlayersForClient;
 @property(readonly) MRMediaRemoteSetNowPlayingPlayerIfPossible_t setNowPlayingPlayerIfPossible;
+@property(readonly) MRMediaRemoteSetOverriddenNowPlayingApplication_t setOverriddenNowPlayingApplication;
 // Constructor
 -(id)init;
 @end

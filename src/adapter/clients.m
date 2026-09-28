@@ -291,74 +291,85 @@ void adapter_sendto(NSString *bundleIdentifier, MRACommand command) {
         failf(@"Invalid command: %d", (int)command);
     }
     if (!g_mediaRemote.sendCommandToPlayer) {
-        fail(@"MRMediaRemoteSendCommandToPlayer is unavailable");
+        fail(@"MRMediaRemoteSendCommandToPlayer is unavailable.");
+    }
+    if (!g_mediaRemote.setOverriddenNowPlayingApplication) {
+        fail(@"MRMediaRemoteSetOverriddenNowPlayingApplication is unavailable.");
+    }
+    if (!g_mediaRemote.nowPlayingClientGetBundleIdentifier ||
+        !g_mediaRemote.nowPlayingClientGetProcessIdentifier ||
+        !g_mediaRemote.getNowPlayingApplicationPID) {
+        fail(@"The MediaRemote target identity functions are unavailable.");
     }
     id origin = localOrigin();
     if (origin == nil) {
-        fail(@"The local MediaRemote origin is unavailable");
+        fail(@"The local MediaRemote origin is unavailable.");
     }
-
-    // Commands must be sent to an active player path, otherwise MediaRemote
-    // redirects them to the elected now playing player and controls the wrong
-    // application. When the target already exposes an active path, send there.
+    id targetClient = nil;
+    for (id client in copyNowPlayingClients()) {
+        if (clientMatchesBundle(client, bundleIdentifier)) {
+            targetClient = client;
+            break;
+        }
+    }
+    if (targetClient == nil) {
+        failf(@"The application `%@` has no registered media session.",
+              bundleIdentifier);
+    }
+    NSString *targetBundleIdentifier =
+        g_mediaRemote.nowPlayingClientGetBundleIdentifier(targetClient);
+    int targetPid =
+        g_mediaRemote.nowPlayingClientGetProcessIdentifier(targetClient);
     id targetPath = activePathForBundle(origin, bundleIdentifier);
-
-    // Otherwise elect the target's player, confirm it actually became the now
-    // playing application, and send to that player path. Some applications
-    // decline election; sending anyway would control whichever player is
-    // currently elected, so give up safely instead of controlling the wrong
-    // application.
-    if (targetPath == nil && g_mediaRemote.setNowPlayingPlayerIfPossible) {
-        id electionPath = nil;
-        int targetPid = 0;
-        NSArray *clients = copyNowPlayingClients();
-        for (id client in clients) {
-            if (clientMatchesBundle(client, bundleIdentifier)) {
-                id player = copyFirstPlayerForClient(origin, client);
-                if (player != nil) {
-                    electionPath = playerPathForClient(origin, client, player);
-                    if (g_mediaRemote.nowPlayingClientGetProcessIdentifier) {
-                        targetPid =
-                            g_mediaRemote.nowPlayingClientGetProcessIdentifier(
-                                client);
-                    }
-                }
-                break;
-            }
-        }
-        if (electionPath != nil) {
-            dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-            g_mediaRemote.setNowPlayingPlayerIfPossible(
-                electionPath, g_serialdispatchQueue, ^(id error) {
-                  dispatch_semaphore_signal(semaphore);
-                });
-            dispatch_semaphore_wait(
-                semaphore,
-                dispatch_time(DISPATCH_TIME_NOW, 2000 * NSEC_PER_MSEC));
-            // Only send once the target application has genuinely become the
-            // now playing application. Applications that decline election never
-            // do, so the command is abandoned instead of controlling whichever
-            // player is currently elected.
-            for (int attempt = 0; attempt < 8 && targetPid != 0; attempt++) {
-                if (nowPlayingPid() == targetPid) {
-                    targetPath = electionPath;
-                    break;
-                }
-                usleep(150 * 1000);
-            }
-        }
-    }
     if (targetPath == nil) {
-        failf(@"The application `%@` did not accept remote control.",
+        id player = copyFirstPlayerForClient(origin, targetClient);
+        targetPath = playerPathForClient(origin, targetClient, player);
+    }
+    if (targetBundleIdentifier.length == 0 || targetPid == 0 ||
+        targetPath == nil) {
+        failf(@"The application `%@` does not expose a controllable media session.",
               bundleIdentifier);
     }
-    bool result = g_mediaRemote.sendCommandToPlayer(
-        (MRCommand)command, nil, targetPath, 0, g_serialdispatchQueue, NULL);
+    g_mediaRemote.setOverriddenNowPlayingApplication(targetBundleIdentifier);
+    int electedPid = 0;
+    for (int attempt = 0; attempt < 20; attempt++) {
+        electedPid = nowPlayingPid();
+        if (electedPid == targetPid) {
+            break;
+        }
+        usleep(25 * 1000);
+    }
+    bool result = false;
+    long waitStatus = 0;
+    if (electedPid == targetPid) {
+        dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+        result = g_mediaRemote.sendCommandToPlayer(
+            (MRCommand)command, nil, targetPath, 0, g_serialdispatchQueue,
+            ^(id commandResult) {
+              (void)commandResult;
+              dispatch_semaphore_signal(semaphore);
+            });
+        if (result) {
+            waitStatus = dispatch_semaphore_wait(
+                semaphore,
+                dispatch_time(DISPATCH_TIME_NOW,
+                              CLIENTS_TIMEOUT_MILLIS * NSEC_PER_MSEC));
+        }
+    }
+    g_mediaRemote.setOverriddenNowPlayingApplication(nil);
+    nowPlayingPid();
+    if (electedPid != targetPid) {
+        failf(@"The application `%@` could not become the temporary MediaRemote target.",
+              bundleIdentifier);
+    }
+    if (waitStatus != 0) {
+        failf(@"Command %d to `%@` timed out.", (int)command,
+              bundleIdentifier);
+    }
     if (!result) {
-        failf(@"Failed to send command %d to %@", (int)command,
+        failf(@"Command %d could not be sent to `%@`.", (int)command,
               bundleIdentifier);
     }
-    waitForCommandCompletion();
 }
 
 void adapter_sendto_env() {

@@ -80,6 +80,7 @@ CFStringRef MRMediaRemoteGetActivePlayerPathsForOrigin = CFSTR("MRMediaRemoteGet
 CFStringRef MRNowPlayingPlayerPathGetClient = CFSTR("MRNowPlayingPlayerPathGetClient");
 CFStringRef MRMediaRemoteGetPlayersForClient = CFSTR("MRMediaRemoteGetPlayersForClient");
 CFStringRef MRMediaRemoteSetNowPlayingPlayerIfPossible = CFSTR("MRMediaRemoteSetNowPlayingPlayerIfPossible");
+CFStringRef MRMediaRemoteSetOverriddenNowPlayingApplication = CFSTR("MRMediaRemoteSetOverriddenNowPlayingApplication");
 
 CFStringRef MRMediaRemoteRegisterForNowPlayingNotifications = CFSTR("MRMediaRemoteRegisterForNowPlayingNotifications");
 CFStringRef MRMediaRemoteUnregisterForNowPlayingNotifications = CFSTR("MRMediaRemoteUnregisterForNowPlayingNotifications");
@@ -119,6 +120,7 @@ static NSString *MediaRemoteFrameworkBundleURL = @"/System/Library/PrivateFramew
 @synthesize nowPlayingPlayerPathGetClient;
 @synthesize getPlayersForClient;
 @synthesize setNowPlayingPlayerIfPossible;
+@synthesize setOverriddenNowPlayingApplication;
 -(id)init
 {
     if (!(self = [super init])) {
@@ -155,6 +157,7 @@ static NSString *MediaRemoteFrameworkBundleURL = @"/System/Library/PrivateFramew
     nowPlayingPlayerPathGetClient = (MRNowPlayingPlayerPathGetClient_t)CFBundleGetFunctionPointerForName(bundle, MRNowPlayingPlayerPathGetClient);
     getPlayersForClient = (MRMediaRemoteGetPlayersForClient_t)CFBundleGetFunctionPointerForName(bundle, MRMediaRemoteGetPlayersForClient);
     setNowPlayingPlayerIfPossible = (MRMediaRemoteSetNowPlayingPlayerIfPossible_t)CFBundleGetFunctionPointerForName(bundle, MRMediaRemoteSetNowPlayingPlayerIfPossible);
+    setOverriddenNowPlayingApplication = (MRMediaRemoteSetOverriddenNowPlayingApplication_t)CFBundleGetFunctionPointerForName(bundle, MRMediaRemoteSetOverriddenNowPlayingApplication);
     return self;
 }
 @end
